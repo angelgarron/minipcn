@@ -55,22 +55,21 @@ class Sampler:
     ) -> None:
         self.log_prob_fn = log_prob_fn
 
-        # if discrete_parameters is None:
-        #     self.discrete_parameters = []
-        #     self.non_discrete_parameters = list(range(dims))
-        # else:
-        #     self.discrete_parameters = discrete_parameters
-        #     self.non_discrete_parameters = list(range(dims))
-        #     for i in self.discrete_parameters:
-        #         self.non_discrete_parameters.remove(i)
+        if discrete_parameters is None:
+            self.discrete_parameters = []
+            self.non_discrete_parameters = list(range(dims))
+        else:
+            self.discrete_parameters = discrete_parameters
+            self.non_discrete_parameters = list(range(dims))
+            for i in self.discrete_parameters:
+                self.non_discrete_parameters.remove(i)
 
         if isinstance(step_fn, str):
             from .step import step_factory
 
             step_fn = step_factory(
                 step_fn,
-                # dims - len(self.discrete_parameters),
-                2,
+                dims - len(self.discrete_parameters),
                 rng,
                 xp,
                 **kwargs,
@@ -78,8 +77,7 @@ class Sampler:
 
         self.step_fn = step_fn
         self.rng = rng
-        # self.dims = dims - len(self.discrete_parameters)
-        self.dims = 2
+        self.dims = dims - len(self.discrete_parameters)
         self.target_acceptance_rate = target_acceptance_rate
         self.xp = xp
 
@@ -110,29 +108,27 @@ class Sampler:
             History of the chain states during the sampling process.
         """
         x = self.xp.atleast_2d(x_init)
-        # x, x_discrete = (
-        #     x[:, self.non_discrete_parameters],
-        #     x[:, self.discrete_parameters],
-        # )
         x, x_discrete = (
-            x[:, :2],
-            x[:, -1],
+            x[:, self.non_discrete_parameters],
+            x[:, self.discrete_parameters],
         )
         self.step_fn.initialise(x)
         log_prob_x = self.log_prob_fn(
-            np.column_stack((x, x_discrete))
+            np.hstack((x, x_discrete))
         )  # Shape: (N,)
         # Accumulate states functionally to avoid in-place updates (e.g. JAX)
-        chain_states: list[Array] = [np.column_stack((x, x_discrete))]
+        chain_states: list[Array] = [np.hstack((x, x_discrete))]
         states = []
         with trange(
             n_steps, desc="Sampling", unit="step", disable=not verbose
         ) as pbar:
             for i in pbar:
                 x_new, log_alpha_step = self.step_fn(x)
-                x_discrete_new = np.random.choice([0.0, 1.0], size=len(x))
+                x_discrete_new = np.random.choice(
+                    [0.0, 1.0], size=len(x)
+                ).reshape(-1, 1)
                 log_prob_x_new = self.log_prob_fn(
-                    np.column_stack((x_new, x_discrete_new))
+                    np.hstack((x_new, x_discrete_new))
                 )
                 log_alpha = log_prob_x_new - log_prob_x + log_alpha_step
                 alpha = self.xp.exp(
@@ -142,10 +138,10 @@ class Sampler:
                 accept = self.rng.uniform(size=len(x_new)) < alpha
                 x = self.xp.where(accept[:, None], x_new, x)  # Shape: (N, D)
                 x_discrete = self.xp.where(
-                    accept, x_discrete_new, x_discrete
+                    accept[:, None], x_discrete_new, x_discrete
                 )  # Shape: (N, D)
                 log_prob_x = self.xp.where(accept, log_prob_x_new, log_prob_x)
-                chain_states.append(np.column_stack((x, x_discrete)))
+                chain_states.append(np.hstack((x, x_discrete)))
 
                 state = ChainState(
                     it=i,
