@@ -125,7 +125,7 @@ class Sampler:
                 x_discrete_new = []
                 for p in self.discrete_priors:
                     x_discrete_new.append(
-                        p.rescale(np.random.uniform(size=len(x)))
+                        p.rescale(self.rng.uniform(size=len(x)))
                     )
                 x_discrete_new = np.asarray(x_discrete_new).T
                 log_prob_x_new = self.log_prob_fn(
