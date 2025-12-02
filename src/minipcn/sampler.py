@@ -111,11 +111,10 @@ class Sampler:
             x[:, self.discrete_parameters],
         )
         self.step_fn.initialise(x)
-        log_prob_x = self.log_prob_fn(
-            np.hstack((x, x_discrete))
-        )  # Shape: (N,)
+        x_full = np.hstack((x, x_discrete))
+        log_prob_x = self.log_prob_fn(x_full)  # Shape: (N,)
         # Accumulate states functionally to avoid in-place updates (e.g. JAX)
-        chain_states: list[Array] = [np.hstack((x, x_discrete))]
+        chain_states: list[Array] = [x_full]
         states = []
         with trange(
             n_steps, desc="Sampling", unit="step", disable=not verbose
@@ -128,9 +127,8 @@ class Sampler:
                         p.rescale(self.rng.uniform(size=len(x)))
                     )
                 x_discrete_new = np.asarray(x_discrete_new).T
-                log_prob_x_new = self.log_prob_fn(
-                    np.hstack((x_new, x_discrete_new))
-                )
+                x_new_full = np.hstack((x_new, x_discrete_new))
+                log_prob_x_new = self.log_prob_fn(x_new_full)
                 log_alpha = log_prob_x_new - log_prob_x + log_alpha_step
                 alpha = self.xp.exp(
                     self.xp.minimum(self.xp.asarray(0.0), log_alpha)
@@ -142,7 +140,8 @@ class Sampler:
                     accept[:, None], x_discrete_new, x_discrete
                 )  # Shape: (N, D)
                 log_prob_x = self.xp.where(accept, log_prob_x_new, log_prob_x)
-                chain_states.append(np.hstack((x, x_discrete)))
+                x_full = np.hstack((x, x_discrete))
+                chain_states.append(x_full)
 
                 state = ChainState(
                     it=i,
