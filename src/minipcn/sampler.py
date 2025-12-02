@@ -50,7 +50,7 @@ class Sampler:
         dims: int,
         target_acceptance_rate: float = 0.234,
         discrete_parameters: list[int] = None,
-        discrete_uniform_prior=None,
+        discrete_priors=None,
         xp: Any = np,
         **kwargs,
     ) -> None:
@@ -60,7 +60,7 @@ class Sampler:
         self.non_discrete_parameters = list(range(dims))
         for i in self.discrete_parameters:
             self.non_discrete_parameters.remove(i)
-        self.discrete_uniform_prior = discrete_uniform_prior
+        self.discrete_priors = discrete_priors
 
         if isinstance(step_fn, str):
             from .step import step_factory
@@ -122,9 +122,12 @@ class Sampler:
         ) as pbar:
             for i in pbar:
                 x_new, log_alpha_step = self.step_fn(x)
-                x_discrete_new = self.discrete_uniform_prior.rescale(
-                    np.random.uniform(size=len(x))
-                ).reshape(-1, 1)
+                x_discrete_new = []
+                for p in self.discrete_priors:
+                    x_discrete_new.append(
+                        p.rescale(np.random.uniform(size=len(x)))
+                    )
+                x_discrete_new = np.asarray(x_discrete_new).T
                 log_prob_x_new = self.log_prob_fn(
                     np.hstack((x_new, x_discrete_new))
                 )
