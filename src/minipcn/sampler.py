@@ -75,6 +75,7 @@ class Sampler:
 
         self.step_fn = step_fn
         self.rng = rng
+        self.dims_full = dims
         self.dims = dims - len(self.discrete_parameters)
         self.target_acceptance_rate = target_acceptance_rate
         self.xp = xp
@@ -111,7 +112,9 @@ class Sampler:
             x[:, self.discrete_parameters],
         )
         self.step_fn.initialise(x)
-        x_full = np.hstack((x, x_discrete))
+        x_full = np.empty((len(x), self.dims_full))
+        x_full[:, self.non_discrete_parameters] = x
+        x_full[:, self.discrete_parameters] = x_discrete
         log_prob_x = self.log_prob_fn(x_full)  # Shape: (N,)
         # Accumulate states functionally to avoid in-place updates (e.g. JAX)
         chain_states: list[Array] = [x_full]
@@ -127,7 +130,9 @@ class Sampler:
                         p.rescale(self.rng.uniform(size=len(x)))
                     )
                 x_discrete_new = np.asarray(x_discrete_new).T
-                x_new_full = np.hstack((x_new, x_discrete_new))
+                x_new_full = np.empty((len(x_new), self.dims_full))
+                x_new_full[:, self.non_discrete_parameters] = x_new
+                x_new_full[:, self.discrete_parameters] = x_discrete_new
                 log_prob_x_new = self.log_prob_fn(x_new_full)
                 log_alpha = log_prob_x_new - log_prob_x + log_alpha_step
                 alpha = self.xp.exp(
@@ -140,7 +145,9 @@ class Sampler:
                     accept[:, None], x_discrete_new, x_discrete
                 )  # Shape: (N, D)
                 log_prob_x = self.xp.where(accept, log_prob_x_new, log_prob_x)
-                x_full = np.hstack((x, x_discrete))
+                x_full = np.empty((len(x), self.dims_full))
+                x_full[:, self.non_discrete_parameters] = x
+                x_full[:, self.discrete_parameters] = x_discrete
                 chain_states.append(x_full)
 
                 state = ChainState(
